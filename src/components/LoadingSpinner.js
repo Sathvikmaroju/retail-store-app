@@ -1,11 +1,11 @@
-import React from 'react';
-import './LoadingSpinner.css';
+import React from "react";
+import "./LoadingSpinner.css";
 
-const LoadingSpinner = ({ size = 'medium', message = 'Loading...' }) => {
+const LoadingSpinner = ({ size = "medium", message = "Loading..." }) => {
   const sizeClasses = {
-    small: 'spinner-small',
-    medium: 'spinner-medium',
-    large: 'spinner-large'
+    small: "spinner-small",
+    medium: "spinner-medium",
+    large: "spinner-large",
   };
 
   return (

@@ -1,5 +1,5 @@
-import React from 'react';
-import './ErrorBoundary.css';
+import React from "react";
+import "./ErrorBoundary.css";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -14,10 +14,10 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     // Log error details
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({
       error: error,
-      errorInfo: errorInfo
+      errorInfo: errorInfo,
     });
   }
 
@@ -34,10 +34,11 @@ class ErrorBoundary extends React.Component {
           <div className="error-container">
             <h2>Oops! Something went wrong</h2>
             <p className="error-message">
-              We're sorry, but something unexpected happened. Please try reloading the page.
+              We're sorry, but something unexpected happened. Please try
+              reloading the page.
             </p>
-            
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+
+            {process.env.NODE_ENV === "development" && this.state.error && (
               <details className="error-details">
                 <summary>Error Details (Development Mode)</summary>
                 <pre className="error-stack">
@@ -46,12 +47,14 @@ class ErrorBoundary extends React.Component {
                 </pre>
               </details>
             )}
-            
+
             <div className="error-actions">
               <button onClick={this.handleReload} className="reload-button">
                 Reload Page
               </button>
-              <button onClick={() => window.history.back()} className="back-button">
+              <button
+                onClick={() => window.history.back()}
+                className="back-button">
                 Go Back
               </button>
             </div>

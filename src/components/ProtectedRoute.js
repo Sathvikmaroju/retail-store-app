@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
-import { auth } from '../firebase/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { Navigate, Outlet } from "react-router-dom";
+import { auth } from "../firebase/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { Loader2 } from "lucide-react";
 
 const ProtectedRoute = () => {
   const [user, setUser] = useState(null);
@@ -20,26 +20,28 @@ const ProtectedRoute = () => {
   // Loading state
   if (loading) {
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100vh',
-        backgroundColor: '#f9fafb'
-      }}>
-        <Loader2 
-          size={40} 
-          color="#3b82f6" 
-          style={{ 
-            animation: 'spin 1s linear infinite' 
-          }} 
-        />
-        <p style={{ 
-          marginTop: '16px', 
-          color: '#6b7280',
-          fontSize: '16px'
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+          backgroundColor: "#f9fafb",
         }}>
+        <Loader2
+          size={40}
+          color="#3b82f6"
+          style={{
+            animation: "spin 1s linear infinite",
+          }}
+        />
+        <p
+          style={{
+            marginTop: "16px",
+            color: "#6b7280",
+            fontSize: "16px",
+          }}>
           Loading...
         </p>
         <style>

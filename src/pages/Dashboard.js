@@ -1,10 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
-  Box, Grid, Typography, Card, CardContent,
-  List, ListItem, ListItemText, Divider
-} from '@mui/material';
-import { db } from '../firebase/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+  Box,
+  Grid,
+  Typography,
+  Card,
+  CardContent,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
+} from "@mui/material";
+import { db } from "../firebase/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 function Dashboard() {
   const [totalSales, setTotalSales] = useState(0);
@@ -14,19 +21,19 @@ function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       // Fetch transactions
-      const transactionsSnap = await getDocs(collection(db, 'transactions'));
+      const transactionsSnap = await getDocs(collection(db, "transactions"));
       let sales = 0;
-      const transactions = transactionsSnap.docs.map(doc => {
+      const transactions = transactionsSnap.docs.map((doc) => {
         const data = doc.data();
         sales += data.total || 0;
         return { id: doc.id, ...data };
       });
 
       // Fetch products
-      const productsSnap = await getDocs(collection(db, 'products'));
+      const productsSnap = await getDocs(collection(db, "products"));
       const lowStock = productsSnap.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(p => (p.remainingQty || 0) < 5);
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((p) => (p.remainingQty || 0) < 5);
 
       setTotalSales(sales);
       setLowStockItems(lowStock);
@@ -70,7 +77,7 @@ function Dashboard() {
                 </Typography>
               ) : (
                 <List dense>
-                  {lowStockItems.map(item => (
+                  {lowStockItems.map((item) => (
                     <ListItem key={item.id}>
                       <ListItemText
                         primary={item.name}
@@ -92,14 +99,16 @@ function Dashboard() {
                 Recent Transactions
               </Typography>
               <List dense>
-                {recentTransactions.map(tx => (
+                {recentTransactions.map((tx) => (
                   <React.Fragment key={tx.id}>
                     <ListItem>
                       <ListItemText
                         primary={`₹${tx.total?.toFixed(2) || 0}`}
-                        secondary={tx.timestamp
-                          ? new Date(tx.timestamp.toDate()).toLocaleString()
-                          : 'Unknown time'}
+                        secondary={
+                          tx.timestamp
+                            ? new Date(tx.timestamp.toDate()).toLocaleString()
+                            : "Unknown time"
+                        }
                       />
                     </ListItem>
                     <Divider />

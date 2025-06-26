@@ -1,24 +1,43 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
-  Box, Typography, Table, TableHead, TableBody, TableRow, TableCell,
-  Button, IconButton, TextField, Dialog, DialogTitle, DialogContent,
-  DialogActions, MenuItem, Tooltip
-} from '@mui/material';
-import { Edit, Delete, PersonAdd } from '@mui/icons-material';
-import { db } from '../firebase/firebase';
-import { collection, getDocs, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
+  Box,
+  Typography,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  Button,
+  IconButton,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  MenuItem,
+  Tooltip,
+} from "@mui/material";
+import { Edit, Delete, PersonAdd } from "@mui/icons-material";
+import { db } from "../firebase/firebase";
+import {
+  collection,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
 
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [editingUser, setEditingUser] = useState(null);
-  const [form, setForm] = useState({ email: '', role: 'staff' });
+  const [form, setForm] = useState({ email: "", role: "staff" });
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchUsers = async () => {
-      const snapshot = await getDocs(collection(db, 'users'));
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const snapshot = await getDocs(collection(db, "users"));
+      const list = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setUsers(list);
     };
     fetchUsers();
@@ -31,22 +50,22 @@ export default function Users() {
 
   const handleUpdate = async () => {
     try {
-      await updateDoc(doc(db, 'users', editingUser.id), form);
+      await updateDoc(doc(db, "users", editingUser.id), form);
       setEditingUser(null);
-      alert('User updated!');
+      alert("User updated!");
     } catch (err) {
-      alert('Failed to update user');
+      alert("Failed to update user");
       console.error(err);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) return;
+    if (!window.confirm("Are you sure you want to delete this user?")) return;
     try {
-      await deleteDoc(doc(db, 'users', id));
-      alert('User deleted');
+      await deleteDoc(doc(db, "users", id));
+      alert("User deleted");
     } catch (err) {
-      alert('Failed to delete user');
+      alert("Failed to delete user");
       console.error(err);
     }
   };
@@ -58,8 +77,7 @@ export default function Users() {
         <Button
           variant="contained"
           startIcon={<PersonAdd />}
-          onClick={() => navigate('/register')}
-        >
+          onClick={() => navigate("/register")}>
           Add User
         </Button>
       </Box>
@@ -73,7 +91,7 @@ export default function Users() {
           </TableRow>
         </TableHead>
         <TableBody>
-          {users.map(user => (
+          {users.map((user) => (
             <TableRow key={user.id}>
               <TableCell>{user.email}</TableCell>
               <TableCell>{user.role}</TableCell>
@@ -95,7 +113,10 @@ export default function Users() {
       </Table>
 
       {/* Edit Dialog */}
-      <Dialog open={!!editingUser} onClose={() => setEditingUser(null)} fullWidth>
+      <Dialog
+        open={!!editingUser}
+        onClose={() => setEditingUser(null)}
+        fullWidth>
         <DialogTitle>Edit User</DialogTitle>
         <DialogContent>
           <TextField
@@ -103,7 +124,9 @@ export default function Users() {
             fullWidth
             margin="normal"
             value={form.email}
-            onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, email: e.target.value }))
+            }
           />
           <TextField
             label="Role"
@@ -111,15 +134,18 @@ export default function Users() {
             margin="normal"
             select
             value={form.role}
-            onChange={(e) => setForm(prev => ({ ...prev, role: e.target.value }))}
-          >
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, role: e.target.value }))
+            }>
             <MenuItem value="admin">Admin</MenuItem>
             <MenuItem value="staff">Staff</MenuItem>
           </TextField>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditingUser(null)}>Cancel</Button>
-          <Button variant="contained" onClick={handleUpdate}>Save</Button>
+          <Button variant="contained" onClick={handleUpdate}>
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

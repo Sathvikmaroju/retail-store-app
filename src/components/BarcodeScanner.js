@@ -1,7 +1,12 @@
-import React, { useEffect, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import React, { useEffect, useRef } from "react";
+import { Html5Qrcode } from "html5-qrcode";
 
-const BarcodeScanner = ({ onScanSuccess, onScanError, fps = 10, qrbox = 250 }) => {
+const BarcodeScanner = ({
+  onScanSuccess,
+  onScanError,
+  fps = 10,
+  qrbox = 250,
+}) => {
   const scannerRef = useRef(null);
 
   useEffect(() => {
@@ -22,7 +27,7 @@ const BarcodeScanner = ({ onScanSuccess, onScanError, fps = 10, qrbox = 250 }) =
     };
   }, []);
 
-  return <div id="scanner" ref={scannerRef} style={{ width: '100%' }} />;
+  return <div id="scanner" ref={scannerRef} style={{ width: "100%" }} />;
 };
 
 export default BarcodeScanner;
