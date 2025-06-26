@@ -27,6 +27,7 @@ function AppLayout({ user }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -105,22 +106,44 @@ function AppLayout({ user }) {
         </Toolbar>
       </AppBar>
 
-      {/* Sidebar Drawer */}
+      {/* Desktop Sidebar - Collapsed by default */}
       <Drawer
         variant="permanent"
         sx={{
-          width: drawerWidth,
+          width: drawerOpen ? drawerWidth : 60,
           flexShrink: 0,
           display: { xs: 'none', sm: 'block' },
           [`& .MuiDrawer-paper`]: {
-            width: drawerWidth,
-            boxSizing: 'border-box'
+            width: drawerOpen ? drawerWidth : 60,
+            boxSizing: 'border-box',
+            transition: 'width 0.3s',
+            overflowX: 'hidden'
           }
         }}
         open
+        onMouseEnter={() => setDrawerOpen(true)}
+        onMouseLeave={() => setDrawerOpen(false)}
       >
         {drawer}
       </Drawer>
+
+      {/* Mobile Temporary Drawer (left side) */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={handleDrawerToggle}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: 'block', sm: 'none' },
+          [`& .MuiDrawer-paper`]: {
+            boxSizing: 'border-box',
+            width: drawerWidth,
+          },
+        }}
+      >
+        {drawer}
+      </Drawer>
+
 
       {/* Main Content with Outlet */}
       <Box

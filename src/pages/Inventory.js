@@ -475,7 +475,8 @@ const handleAddProduct = async (e) => {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>Inventory</Typography>
-
+      
+      {/* Summary */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={4}>
           <Paper sx={{ p: 2, textAlign: 'center' }}>
