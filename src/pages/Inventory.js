@@ -31,6 +31,22 @@ import {
   DialogContentText,
   DialogTitle,
   Autocomplete,
+  Card,
+  CardContent,
+  CardActions,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  ToggleButton,
+  ToggleButtonGroup,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Collapse,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
@@ -38,11 +54,20 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
+import ViewListIcon from "@mui/icons-material/ViewList";
+import ViewModuleIcon from "@mui/icons-material/ViewModule";
+import TableViewIcon from "@mui/icons-material/TableView";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import InventoryIcon from "@mui/icons-material/Inventory";
+import TrendingDownIcon from "@mui/icons-material/TrendingDown";
+import ErrorIcon from "@mui/icons-material/Error";
+import AddIcon from "@mui/icons-material/Add";
 
 const UNIT_TYPES = ["meter", "kilogram", "piece", "box"];
 const INITIAL_PRODUCT_STATE = {
   name: "",
   pricePerUnit: "",
+  purchasePricePerUnit: "",
   unitType: "piece",
   category: "",
   subCategory: "",
@@ -67,6 +92,13 @@ function Inventory() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
+
+  // New state for enhanced UX
+  const [viewMode, setViewMode] = useState("accordion"); // 'accordion', 'table', 'cards'
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [vendorFilter, setVendorFilter] = useState("");
+  const [stockFilter, setStockFilter] = useState("all"); // 'all', 'low', 'out', 'available'
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -115,24 +147,83 @@ function Inventory() {
   // Filter subcategories based on selected category
   useEffect(() => {
     if (newProduct.category) {
-      // For now, show all subcategories. In a real app, you might want to filter by category
       setFilteredSubCategories(subCategories);
     } else {
       setFilteredSubCategories([]);
     }
   }, [newProduct.category, subCategories]);
 
+  // Enhanced filtering logic
   const filteredProducts = useMemo(() => {
-    if (!searchTerm) return products;
-    const term = searchTerm.toLowerCase();
-    return products.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(term) ||
-        p.category?.toLowerCase().includes(term) ||
-        p.vendorName?.toLowerCase().includes(term) ||
-        p.subCategory?.toLowerCase().includes(term)
-    );
-  }, [products, searchTerm]);
+    let filtered = products;
+
+    // Search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(term) ||
+          p.category?.toLowerCase().includes(term) ||
+          p.vendorName?.toLowerCase().includes(term) ||
+          p.subCategory?.toLowerCase().includes(term)
+      );
+    }
+
+    // Category filter
+    if (categoryFilter) {
+      filtered = filtered.filter((p) => p.category === categoryFilter);
+    }
+
+    // Vendor filter
+    if (vendorFilter) {
+      filtered = filtered.filter((p) => p.vendorName === vendorFilter);
+    }
+
+    // Stock filter
+    if (stockFilter !== "all") {
+      filtered = filtered.filter((p) => {
+        const remaining = p.remainingQty || 0;
+        const threshold = p.lowStockThreshold || 10;
+
+        switch (stockFilter) {
+          case "out":
+            return remaining <= 0;
+          case "low":
+            return remaining > 0 && remaining < threshold;
+          case "available":
+            return remaining >= threshold;
+          default:
+            return true;
+        }
+      });
+    }
+
+    return filtered;
+  }, [products, searchTerm, categoryFilter, vendorFilter, stockFilter]);
+
+  const groupedProducts = useMemo(() => {
+    const lowStock = [];
+    const outOfStock = [];
+    const available = [];
+
+    filteredProducts.forEach((p) => {
+      const remaining = p.remainingQty || 0;
+      const threshold = p.lowStockThreshold || 10;
+      if (remaining <= 0) outOfStock.push(p);
+      else if (remaining < threshold) lowStock.push(p);
+      else available.push(p);
+    });
+
+    return { lowStock, outOfStock, available };
+  }, [filteredProducts]);
+
+  // Get unique categories and vendors for filters
+  const uniqueCategories = [
+    ...new Set(products.map((p) => p.category).filter(Boolean)),
+  ];
+  const uniqueVendors = [
+    ...new Set(products.map((p) => p.vendorName).filter(Boolean)),
+  ];
 
   const handleInputChange = (
     field,
@@ -215,22 +306,6 @@ function Inventory() {
     }
   };
 
-  const groupedProducts = useMemo(() => {
-    const lowStock = [];
-    const outOfStock = [];
-    const available = [];
-
-    filteredProducts.forEach((p) => {
-      const remaining = p.remainingQty || 0;
-      const threshold = p.lowStockThreshold || 10;
-      if (remaining <= 0) outOfStock.push(p);
-      else if (remaining < threshold) lowStock.push(p);
-      else available.push(p);
-    });
-
-    return { lowStock, outOfStock, available };
-  }, [filteredProducts]);
-
   const handleProductEdit = (
     product,
     field,
@@ -299,385 +374,821 @@ function Inventory() {
     setDeleteDialogOpen(true);
   };
 
-  const inStock = filteredProducts.filter((p) => p.remainingQty > 0);
-  const outOfStock = filteredProducts.filter((p) => (p.remainingQty || 0) <= 0);
+  const clearFilters = () => {
+    setCategoryFilter("");
+    setVendorFilter("");
+    setStockFilter("all");
+    setSearchTerm("");
+  };
 
-  const renderAccordion = (data) =>
-    data.map((product) => {
-      const isLowStock =
-        (product.remainingQty || 0) < (product.lowStockThreshold || 10);
-      const isEditing = editingProduct && editingProduct.id === product.id;
-      const currentProduct = isEditing ? editingProduct : product;
+  // Render functions for different view modes
+  const renderTableView = () => (
+    <TableContainer component={Paper}>
+      <Table size="small">
+        <TableHead>
+          <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
+            <TableCell>
+              <strong>Product</strong>
+            </TableCell>
+            <TableCell>
+              <strong>Category</strong>
+            </TableCell>
+            <TableCell>
+              <strong>Stock</strong>
+            </TableCell>
+            <TableCell>
+              <strong>Price</strong>
+            </TableCell>
+            <TableCell>
+              <strong>Vendor</strong>
+            </TableCell>
+            <TableCell>
+              <strong>Actions</strong>
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {filteredProducts.map((product) => {
+            const isLowStock =
+              (product.remainingQty || 0) < (product.lowStockThreshold || 10);
+            const isOutOfStock = (product.remainingQty || 0) <= 0;
 
-      return (
-        <Accordion key={product.id}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: "flex", alignItems: "center", width: "100%" }}>
-              <Typography sx={{ flexGrow: 1 }}>
-                {currentProduct.name}
-              </Typography>
-              {isLowStock && <PriorityHighIcon sx={{ color: "red", mr: 1 }} />}
-              <Chip
-                label={`Qty: ${currentProduct.remainingQty || 0}`}
-                color={currentProduct.remainingQty === 0 ? "error" : "success"}
-                size="small"
-              />
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            {isEditing ? (
-              // Edit Mode
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-                  gap: 2,
-                }}>
-                <TextField
-                  label="Product Name"
-                  value={currentProduct.name}
-                  onChange={(e) =>
-                    handleProductEdit(currentProduct, "name", e.target.value)
-                  }
-                  size="small"
-                  required
-                />
-                <Autocomplete
-                  freeSolo
-                  options={categories}
-                  value={currentProduct.category}
-                  onChange={(event, newValue) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "category",
-                      newValue || ""
-                    )
-                  }
-                  onInputChange={(event, newInputValue) =>
-                    handleProductEdit(currentProduct, "category", newInputValue)
-                  }
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Category"
-                      size="small"
-                      required
-                    />
+            return (
+              <TableRow
+                key={product.id}
+                sx={{ "&:hover": { backgroundColor: "#f9f9f9" } }}>
+                <TableCell>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    {isOutOfStock && (
+                      <ErrorIcon sx={{ color: "error.main", fontSize: 16 }} />
+                    )}
+                    {isLowStock && !isOutOfStock && (
+                      <TrendingDownIcon
+                        sx={{ color: "warning.main", fontSize: 16 }}
+                      />
+                    )}
+                    <Typography
+                      variant="body2"
+                      fontWeight={
+                        isLowStock || isOutOfStock ? "bold" : "normal"
+                      }>
+                      {product.name}
+                    </Typography>
+                  </Box>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2">{product.category}</Typography>
+                  {product.subCategory && (
+                    <Typography variant="caption" color="text.secondary">
+                      {product.subCategory}
+                    </Typography>
                   )}
-                />
-                <Autocomplete
-                  freeSolo
-                  options={subCategories}
-                  value={currentProduct.subCategory || ""}
-                  onChange={(event, newValue) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "subCategory",
-                      newValue || ""
-                    )
-                  }
-                  onInputChange={(event, newInputValue) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "subCategory",
-                      newInputValue
-                    )
-                  }
-                  renderInput={(params) => (
-                    <TextField {...params} label="Sub Category" size="small" />
-                  )}
-                />
-                <TextField
-                  select
-                  label="Unit Type"
-                  value={currentProduct.unitType}
-                  onChange={(e) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "unitType",
-                      e.target.value
-                    )
-                  }
-                  size="small"
-                  SelectProps={{ native: true }}>
-                  {UNIT_TYPES.map((unit) => (
-                    <option key={unit} value={unit}>
-                      {unit}
-                    </option>
-                  ))}
-                </TextField>
-                <TextField
-                  label="Price per Unit"
-                  type="number"
-                  value={currentProduct.pricePerUnit}
-                  onChange={(e) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "pricePerUnit",
-                      e.target.value
-                    )
-                  }
-                  size="small"
-                  required
-                />
-                <TextField
-                  label="Purchase Price per Unit"
-                  type="number"
-                  value={currentProduct.purchasePricePerUnit || ""}
-                  onChange={(e) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "purchasePricePerUnit",
-                      e.target.value
-                    )
-                  }
-                  size="small"
-                />
-                <TextField
-                  label="Purchase Quantity"
-                  type="number"
-                  value={currentProduct.purchaseQty || ""}
-                  onChange={(e) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "purchaseQty",
-                      e.target.value
-                    )
-                  }
-                  size="small"
-                />
-                <TextField
-                  label="Sold Quantity"
-                  type="number"
-                  value={currentProduct.soldQty || ""}
-                  onChange={(e) =>
-                    handleProductEdit(currentProduct, "soldQty", e.target.value)
-                  }
-                  size="small"
-                />
-                <TextField
-                  label="Low Stock Threshold"
-                  type="number"
-                  value={currentProduct.lowStockThreshold || ""}
-                  onChange={(e) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "lowStockThreshold",
-                      e.target.value
-                    )
-                  }
-                  size="small"
-                />
-                <TextField
-                  label="Vendor Name"
-                  value={currentProduct.vendorName || ""}
-                  onChange={(e) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "vendorName",
-                      e.target.value
-                    )
-                  }
-                  size="small"
-                />
-                <TextField
-                  label="Vendor Contact"
-                  value={currentProduct.vendorDetails?.contact || ""}
-                  onChange={(e) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "vendorDetails",
-                      e.target.value,
-                      true,
-                      "contact"
-                    )
-                  }
-                  size="small"
-                />
-                <TextField
-                  label="Vendor Description"
-                  value={currentProduct.vendorDetails?.vendor_desc || ""}
-                  onChange={(e) =>
-                    handleProductEdit(
-                      currentProduct,
-                      "vendorDetails",
-                      e.target.value,
-                      true,
-                      "vendor_desc"
-                    )
-                  }
-                  size="small"
-                  multiline
-                  rows={2}
-                  sx={{ gridColumn: "span 2" }}
-                />
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={`${product.remainingQty || 0} ${product.unitType}`}
+                    size="small"
+                    color={
+                      isOutOfStock
+                        ? "error"
+                        : isLowStock
+                        ? "warning"
+                        : "success"
+                    }
+                  />
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2">
+                    ₹{product.pricePerUnit}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2">
+                    {product.vendorName || "-"}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <IconButton
+                    size="small"
+                    onClick={() => setEditingProduct({ ...product })}
+                    color="primary">
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
 
-                {/* Action Buttons */}
+  const renderCardView = () => (
+    <Grid container spacing={2}>
+      {filteredProducts.map((product) => {
+        const isLowStock =
+          (product.remainingQty || 0) < (product.lowStockThreshold || 10);
+        const isOutOfStock = (product.remainingQty || 0) <= 0;
+
+        return (
+          <Grid item xs={12} sm={6} md={4} key={product.id}>
+            <Card
+              sx={{
+                height: "100%",
+                border: isOutOfStock
+                  ? "2px solid #f44336"
+                  : isLowStock
+                  ? "2px solid #ff9800"
+                  : "1px solid #e0e0e0",
+                "&:hover": { boxShadow: 3 },
+              }}>
+              <CardContent>
                 <Box
-                  sx={{
-                    gridColumn: "span 2",
-                    display: "flex",
-                    gap: 1,
-                    justifyContent: "flex-start",
-                    mt: 2,
-                  }}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    startIcon={<SaveIcon />}
-                    onClick={() => handleUpdateProduct(currentProduct)}
-                    size="small">
-                    Save Changes
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    color="secondary"
-                    startIcon={<CancelIcon />}
-                    onClick={() => setEditingProduct(null)}
-                    size="small">
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="contained"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={() => openDeleteDialog(currentProduct)}
-                    size="small">
-                    Delete Product
-                  </Button>
+                  sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+                  {isOutOfStock && <ErrorIcon sx={{ color: "error.main" }} />}
+                  {isLowStock && !isOutOfStock && (
+                    <TrendingDownIcon sx={{ color: "warning.main" }} />
+                  )}
+                  <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+                    {product.name}
+                  </Typography>
                 </Box>
-              </Box>
-            ) : (
-              // View Mode
-              <Box>
-                <Typography>
-                  <strong>Category:</strong> {currentProduct.category} /{" "}
-                  {currentProduct.subCategory || "-"}
-                </Typography>
-                <Typography>
-                  <strong>Unit:</strong> {currentProduct.unitType}
-                </Typography>
-                <Typography>
-                  <strong>Selling Price per Unit:</strong> ₹
-                  {currentProduct.pricePerUnit}
-                </Typography>
-                {currentProduct.purchasePricePerUnit && (
-                  <Typography>
-                    <strong>Purchase Price per Unit:</strong> ₹
-                    {currentProduct.purchasePricePerUnit}
-                  </Typography>
-                )}
-                <Typography>
-                  <strong>Purchase Qty:</strong>{" "}
-                  {currentProduct.purchaseQty || 0}
-                </Typography>
-                <Typography>
-                  <strong>Sold Qty:</strong> {currentProduct.soldQty || 0}
-                </Typography>
-                <Typography>
-                  <strong>Remaining Qty:</strong>{" "}
-                  {currentProduct.remainingQty || 0}
-                </Typography>
-                <Typography>
-                  <strong>Low Stock Threshold:</strong>{" "}
-                  {currentProduct.lowStockThreshold || 10}
-                </Typography>
-                <Typography>
-                  <strong>Vendor:</strong> {currentProduct.vendorName || "N/A"}
-                </Typography>
-                {currentProduct.vendorDetails?.contact && (
-                  <Typography>
-                    <strong>Vendor Contact:</strong>{" "}
-                    {currentProduct.vendorDetails.contact}
-                  </Typography>
-                )}
-                {currentProduct.vendorDetails?.vendor_desc && (
-                  <Typography>
-                    <strong>Vendor Description:</strong>{" "}
-                    {currentProduct.vendorDetails.vendor_desc}
-                  </Typography>
-                )}
 
-                {/* Action Button */}
-                <Box sx={{ mt: 2 }}>
-                  <Button
-                    variant="outlined"
-                    color="primary"
-                    startIcon={<EditIcon />}
-                    onClick={() => setEditingProduct({ ...currentProduct })}
-                    size="small">
-                    Edit Product
-                  </Button>
-                </Box>
-              </Box>
-            )}
-          </AccordionDetails>
-        </Accordion>
-      );
-    });
+                <Stack spacing={1}>
+                  <Box
+                    sx={{ display: "flex", justifyContent: "space-between" }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Category:
+                    </Typography>
+                    <Typography variant="body2">{product.category}</Typography>
+                  </Box>
+
+                  <Box
+                    sx={{ display: "flex", justifyContent: "space-between" }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Stock:
+                    </Typography>
+                    <Chip
+                      label={`${product.remainingQty || 0} ${product.unitType}`}
+                      size="small"
+                      color={
+                        isOutOfStock
+                          ? "error"
+                          : isLowStock
+                          ? "warning"
+                          : "success"
+                      }
+                    />
+                  </Box>
+
+                  <Box
+                    sx={{ display: "flex", justifyContent: "space-between" }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Price:
+                    </Typography>
+                    <Typography variant="body2">
+                      ₹{product.pricePerUnit}
+                    </Typography>
+                  </Box>
+
+                  {product.vendorName && (
+                    <Box
+                      sx={{ display: "flex", justifyContent: "space-between" }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Vendor:
+                      </Typography>
+                      <Typography variant="body2">
+                        {product.vendorName}
+                      </Typography>
+                    </Box>
+                  )}
+                </Stack>
+              </CardContent>
+
+              <CardActions>
+                <Button
+                  size="small"
+                  startIcon={<EditIcon />}
+                  onClick={() => setEditingProduct({ ...product })}>
+                  Edit
+                </Button>
+              </CardActions>
+            </Card>
+          </Grid>
+        );
+      })}
+    </Grid>
+  );
+
+  const renderAccordionView = () => {
+    const inStock = filteredProducts.filter((p) => p.remainingQty > 0);
+    const outOfStock = filteredProducts.filter(
+      (p) => (p.remainingQty || 0) <= 0
+    );
+
+    const renderAccordion = (data, title, titleColor = "inherit") => (
+      <>
+        {data.length > 0 && (
+          <>
+            <Typography
+              variant="h6"
+              color={titleColor}
+              gutterBottom
+              sx={{ mt: 2 }}>
+              {title} ({data.length})
+            </Typography>
+            {data.map((product) => {
+              const isLowStock =
+                (product.remainingQty || 0) < (product.lowStockThreshold || 10);
+              const isEditing =
+                editingProduct && editingProduct.id === product.id;
+              const currentProduct = isEditing ? editingProduct : product;
+
+              return (
+                <Accordion key={product.id}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        width: "100%",
+                      }}>
+                      <Typography sx={{ flexGrow: 1 }}>
+                        {currentProduct.name}
+                      </Typography>
+                      {isLowStock && (
+                        <PriorityHighIcon sx={{ color: "red", mr: 1 }} />
+                      )}
+                      <Chip
+                        label={`Qty: ${currentProduct.remainingQty || 0}`}
+                        color={
+                          currentProduct.remainingQty === 0
+                            ? "error"
+                            : "success"
+                        }
+                        size="small"
+                      />
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {isEditing ? (
+                      // Edit Mode
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "repeat(auto-fit, minmax(250px, 1fr))",
+                          gap: 2,
+                        }}>
+                        <TextField
+                          label="Product Name"
+                          value={currentProduct.name}
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "name",
+                              e.target.value
+                            )
+                          }
+                          size="small"
+                          required
+                        />
+                        <Autocomplete
+                          freeSolo
+                          options={categories}
+                          value={currentProduct.category}
+                          onChange={(event, newValue) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "category",
+                              newValue || ""
+                            )
+                          }
+                          onInputChange={(event, newInputValue) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "category",
+                              newInputValue
+                            )
+                          }
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label="Category"
+                              size="small"
+                              required
+                            />
+                          )}
+                        />
+                        <Autocomplete
+                          freeSolo
+                          options={subCategories}
+                          value={currentProduct.subCategory || ""}
+                          onChange={(event, newValue) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "subCategory",
+                              newValue || ""
+                            )
+                          }
+                          onInputChange={(event, newInputValue) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "subCategory",
+                              newInputValue
+                            )
+                          }
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label="Sub Category"
+                              size="small"
+                            />
+                          )}
+                        />
+                        <TextField
+                          select
+                          label="Unit Type"
+                          value={currentProduct.unitType}
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "unitType",
+                              e.target.value
+                            )
+                          }
+                          size="small"
+                          SelectProps={{ native: true }}>
+                          {UNIT_TYPES.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </TextField>
+                        <TextField
+                          label="Price per Unit"
+                          type="number"
+                          value={currentProduct.pricePerUnit}
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "pricePerUnit",
+                              e.target.value
+                            )
+                          }
+                          size="small"
+                          required
+                        />
+                        <TextField
+                          label="Purchase Price per Unit"
+                          type="number"
+                          value={currentProduct.purchasePricePerUnit || ""}
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "purchasePricePerUnit",
+                              e.target.value
+                            )
+                          }
+                          size="small"
+                        />
+                        <TextField
+                          label="Purchase Quantity"
+                          type="number"
+                          value={currentProduct.purchaseQty || ""}
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "purchaseQty",
+                              e.target.value
+                            )
+                          }
+                          size="small"
+                        />
+                        <TextField
+                          label="Sold Quantity"
+                          type="number"
+                          value={currentProduct.soldQty || ""}
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "soldQty",
+                              e.target.value
+                            )
+                          }
+                          size="small"
+                        />
+                        <TextField
+                          label="Low Stock Threshold"
+                          type="number"
+                          value={currentProduct.lowStockThreshold || ""}
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "lowStockThreshold",
+                              e.target.value
+                            )
+                          }
+                          size="small"
+                        />
+                        <TextField
+                          label="Vendor Name"
+                          value={currentProduct.vendorName || ""}
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "vendorName",
+                              e.target.value
+                            )
+                          }
+                          size="small"
+                        />
+                        <TextField
+                          label="Vendor Contact"
+                          value={currentProduct.vendorDetails?.contact || ""}
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "vendorDetails",
+                              e.target.value,
+                              true,
+                              "contact"
+                            )
+                          }
+                          size="small"
+                        />
+                        <TextField
+                          label="Vendor Description"
+                          value={
+                            currentProduct.vendorDetails?.vendor_desc || ""
+                          }
+                          onChange={(e) =>
+                            handleProductEdit(
+                              currentProduct,
+                              "vendorDetails",
+                              e.target.value,
+                              true,
+                              "vendor_desc"
+                            )
+                          }
+                          size="small"
+                          multiline
+                          rows={2}
+                          sx={{ gridColumn: "span 2" }}
+                        />
+
+                        {/* Action Buttons */}
+                        <Box
+                          sx={{
+                            gridColumn: "span 2",
+                            display: "flex",
+                            gap: 1,
+                            justifyContent: "flex-start",
+                            mt: 2,
+                          }}>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<SaveIcon />}
+                            onClick={() => handleUpdateProduct(currentProduct)}
+                            size="small">
+                            Save Changes
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            color="secondary"
+                            startIcon={<CancelIcon />}
+                            onClick={() => setEditingProduct(null)}
+                            size="small">
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="contained"
+                            color="error"
+                            startIcon={<DeleteIcon />}
+                            onClick={() => openDeleteDialog(currentProduct)}
+                            size="small">
+                            Delete Product
+                          </Button>
+                        </Box>
+                      </Box>
+                    ) : (
+                      // View Mode
+                      <Box>
+                        <Typography>
+                          <strong>Category:</strong> {currentProduct.category} /{" "}
+                          {currentProduct.subCategory || "-"}
+                        </Typography>
+                        <Typography>
+                          <strong>Unit:</strong> {currentProduct.unitType}
+                        </Typography>
+                        <Typography>
+                          <strong>Selling Price per Unit:</strong> ₹
+                          {currentProduct.pricePerUnit}
+                        </Typography>
+                        {currentProduct.purchasePricePerUnit && (
+                          <Typography>
+                            <strong>Purchase Price per Unit:</strong> ₹
+                            {currentProduct.purchasePricePerUnit}
+                          </Typography>
+                        )}
+                        <Typography>
+                          <strong>Purchase Qty:</strong>{" "}
+                          {currentProduct.purchaseQty || 0}
+                        </Typography>
+                        <Typography>
+                          <strong>Sold Qty:</strong>{" "}
+                          {currentProduct.soldQty || 0}
+                        </Typography>
+                        <Typography>
+                          <strong>Remaining Qty:</strong>{" "}
+                          {currentProduct.remainingQty || 0}
+                        </Typography>
+                        <Typography>
+                          <strong>Low Stock Threshold:</strong>{" "}
+                          {currentProduct.lowStockThreshold || 10}
+                        </Typography>
+                        <Typography>
+                          <strong>Vendor:</strong>{" "}
+                          {currentProduct.vendorName || "N/A"}
+                        </Typography>
+                        {currentProduct.vendorDetails?.contact && (
+                          <Typography>
+                            <strong>Vendor Contact:</strong>{" "}
+                            {currentProduct.vendorDetails.contact}
+                          </Typography>
+                        )}
+                        {currentProduct.vendorDetails?.vendor_desc && (
+                          <Typography>
+                            <strong>Vendor Description:</strong>{" "}
+                            {currentProduct.vendorDetails.vendor_desc}
+                          </Typography>
+                        )}
+
+                        {/* Action Button */}
+                        <Box sx={{ mt: 2 }}>
+                          <Button
+                            variant="outlined"
+                            color="primary"
+                            startIcon={<EditIcon />}
+                            onClick={() =>
+                              setEditingProduct({ ...currentProduct })
+                            }
+                            size="small">
+                            Edit Product
+                          </Button>
+                        </Box>
+                      </Box>
+                    )}
+                  </AccordionDetails>
+                </Accordion>
+              );
+            })}
+          </>
+        )}
+      </>
+    );
+
+    return (
+      <>
+        {renderAccordion(inStock, "In Stock", "success.main")}
+        {renderAccordion(outOfStock, "Out of Stock", "error.main")}
+      </>
+    );
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 3, textAlign: "center" }}>
+        <Typography>Loading inventory...</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Inventory
-      </Typography>
+      {/* Header */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
+        <InventoryIcon sx={{ fontSize: 32, color: "primary.main" }} />
+        <Typography variant="h4" component="h1">
+          Inventory Management
+        </Typography>
+      </Box>
 
-      {/* Summary */}
+      {/* Summary Dashboard */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={4}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
+        <Grid item xs={12} sm={3}>
+          <Paper
+            sx={{
+              p: 2,
+              textAlign: "center",
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              color: "white",
+            }}>
+            <InventoryIcon sx={{ fontSize: 32, mb: 1 }} />
             <Typography variant="subtitle2">Total Items</Typography>
-            <Typography variant="h6">{products.length}</Typography>
+            <Typography variant="h5" fontWeight="bold">
+              {products.length}
+            </Typography>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={4}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
+        <Grid item xs={12} sm={3}>
+          <Paper
+            sx={{
+              p: 2,
+              textAlign: "center",
+              background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+              color: "white",
+            }}>
+            <TrendingDownIcon sx={{ fontSize: 32, mb: 1 }} />
             <Typography variant="subtitle2">Low Stock</Typography>
-            <Typography variant="h6" color="warning.main">
+            <Typography variant="h5" fontWeight="bold">
               {groupedProducts.lowStock.length}
             </Typography>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={4}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
+        <Grid item xs={12} sm={3}>
+          <Paper
+            sx={{
+              p: 2,
+              textAlign: "center",
+              background: "linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)",
+              color: "white",
+            }}>
+            <ErrorIcon sx={{ fontSize: 32, mb: 1 }} />
             <Typography variant="subtitle2">Out of Stock</Typography>
-            <Typography variant="h6" color="error.main">
+            <Typography variant="h5" fontWeight="bold">
               {groupedProducts.outOfStock.length}
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={3}>
+          <Paper
+            sx={{
+              p: 2,
+              textAlign: "center",
+              background: "linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)",
+              color: "#333",
+            }}>
+            <Box sx={{ display: "flex", justifyContent: "center", mb: 1 }}>
+              <Typography variant="h4">📊</Typography>
+            </Box>
+            <Typography variant="subtitle2">Available</Typography>
+            <Typography variant="h5" fontWeight="bold">
+              {groupedProducts.available.length}
             </Typography>
           </Paper>
         </Grid>
       </Grid>
 
-      {/* Search Bar and Add Button */}
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="center"
-        sx={{ mb: 2 }}>
-        <TextField
-          variant="outlined"
-          placeholder="Search inventory by product name, category, or vendor..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          sx={{ flexGrow: 1, mr: 2 }}
-        />
-        <Button
-          variant="contained"
-          onClick={() => setShowAddForm(!showAddForm)}>
-          {showAddForm ? "Hide Add Product Form" : "Add New Product"}
-        </Button>
-      </Stack>
+      {/* Search, Filters, and View Controls */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Stack spacing={2}>
+          {/* Top Row: Search and Add Button */}
+          <Stack direction="row" spacing={2} alignItems="center">
+            <TextField
+              variant="outlined"
+              placeholder="Search by product name, category, or vendor..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              sx={{ flexGrow: 1 }}
+              size="small"
+            />
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setShowAddForm(!showAddForm)}
+              sx={{ minWidth: 160 }}>
+              {showAddForm ? "Hide Form" : "Add Product"}
+            </Button>
+          </Stack>
 
-      {/* Add Product Form - Now positioned below the search bar and button */}
-      {showAddForm && (
-        <div
-          style={{
-            backgroundColor: "#f9f9f9",
-            padding: "20px",
-            borderRadius: "8px",
-            marginBottom: "30px",
-          }}>
-          <h3>Add New Product</h3>
+          {/* Second Row: Filters and View Toggle */}
+          <Stack
+            direction="row"
+            spacing={2}
+            alignItems="center"
+            justifyContent="space-between">
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Button
+                variant="outlined"
+                startIcon={<FilterListIcon />}
+                onClick={() => setShowFilters(!showFilters)}
+                size="small">
+                Filters
+              </Button>
+
+              {/* Active filter chips */}
+              {(categoryFilter || vendorFilter || stockFilter !== "all") && (
+                <Stack direction="row" spacing={1}>
+                  {categoryFilter && (
+                    <Chip
+                      label={`Category: ${categoryFilter}`}
+                      onDelete={() => setCategoryFilter("")}
+                      size="small"
+                      color="primary"
+                    />
+                  )}
+                  {vendorFilter && (
+                    <Chip
+                      label={`Vendor: ${vendorFilter}`}
+                      onDelete={() => setVendorFilter("")}
+                      size="small"
+                      color="primary"
+                    />
+                  )}
+                  {stockFilter !== "all" && (
+                    <Chip
+                      label={`Stock: ${stockFilter}`}
+                      onDelete={() => setStockFilter("all")}
+                      size="small"
+                      color="primary"
+                    />
+                  )}
+                  <Button size="small" onClick={clearFilters}>
+                    Clear All
+                  </Button>
+                </Stack>
+              )}
+            </Stack>
+
+            {/* View Mode Toggle */}
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={(e, newMode) => newMode && setViewMode(newMode)}
+              size="small">
+              <ToggleButton value="accordion">
+                <ViewListIcon />
+              </ToggleButton>
+              <ToggleButton value="table">
+                <TableViewIcon />
+              </ToggleButton>
+              <ToggleButton value="cards">
+                <ViewModuleIcon />
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+
+          {/* Expandable Filters */}
+          <Collapse in={showFilters}>
+            <Stack
+              direction="row"
+              spacing={2}
+              sx={{ pt: 2, borderTop: "1px solid #e0e0e0" }}>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Category</InputLabel>
+                <Select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  label="Category">
+                  <MenuItem value="">All Categories</MenuItem>
+                  {uniqueCategories.map((cat) => (
+                    <MenuItem key={cat} value={cat}>
+                      {cat}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Vendor</InputLabel>
+                <Select
+                  value={vendorFilter}
+                  onChange={(e) => setVendorFilter(e.target.value)}
+                  label="Vendor">
+                  <MenuItem value="">All Vendors</MenuItem>
+                  {uniqueVendors.map((vendor) => (
+                    <MenuItem key={vendor} value={vendor}>
+                      {vendor}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Stock Status</InputLabel>
+                <Select
+                  value={stockFilter}
+                  onChange={(e) => setStockFilter(e.target.value)}
+                  label="Stock Status">
+                  <MenuItem value="all">All Items</MenuItem>
+                  <MenuItem value="available">Available</MenuItem>
+                  <MenuItem value="low">Low Stock</MenuItem>
+                  <MenuItem value="out">Out of Stock</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+          </Collapse>
+        </Stack>
+      </Paper>
+
+      {/* Add Product Form */}
+      <Collapse in={showAddForm}>
+        <Paper sx={{ p: 3, mb: 3, background: "#f8f9fa" }}>
+          <Typography variant="h6" gutterBottom>
+            Add New Product
+          </Typography>
           <Box
             sx={{
               display: "grid",
@@ -763,7 +1274,6 @@ function Inventory() {
                   option.toLowerCase().includes(inputValue.toLowerCase())
                 );
 
-                // Add "Create new category" option if input doesn't match any existing
                 if (
                   inputValue !== "" &&
                   !options.some(
@@ -811,7 +1321,6 @@ function Inventory() {
                   option.toLowerCase().includes(inputValue.toLowerCase())
                 );
 
-                // Add "Create new subcategory" option if input doesn't match any existing
                 if (
                   inputValue !== "" &&
                   !options.some(
@@ -923,7 +1432,8 @@ function Inventory() {
               onClick={handleAddProduct}
               disabled={submitting}
               fullWidth
-              size="large">
+              size="large"
+              sx={{ maxWidth: 300 }}>
               {submitting ? "Adding Product..." : "Add Product"}
             </Button>
           </Box>
@@ -942,23 +1452,248 @@ function Inventory() {
               {error}
             </Box>
           )}
-        </div>
+        </Paper>
+      </Collapse>
+
+      {/* Results Summary */}
+      {(searchTerm ||
+        categoryFilter ||
+        vendorFilter ||
+        stockFilter !== "all") && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Showing {filteredProducts.length} of {products.length} products
+          </Typography>
+        </Box>
       )}
 
-      <Divider sx={{ my: 3 }} />
+      {/* Products Display based on view mode */}
+      <Box sx={{ mt: 3 }}>
+        {filteredProducts.length === 0 ? (
+          <Paper sx={{ p: 4, textAlign: "center" }}>
+            <Typography variant="h6" color="text.secondary">
+              No products found
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {products.length === 0
+                ? "Add your first product to get started"
+                : "Try adjusting your search or filters"}
+            </Typography>
+          </Paper>
+        ) : (
+          <>
+            {viewMode === "table" && renderTableView()}
+            {viewMode === "cards" && renderCardView()}
+            {viewMode === "accordion" && renderAccordionView()}
+          </>
+        )}
+      </Box>
 
-      {/* Products Display */}
-      <Typography variant="h5" color="green" gutterBottom>
-        In Stock
-      </Typography>
-      {renderAccordion(inStock)}
-
-      <Divider sx={{ my: 3 }} />
-
-      <Typography variant="h5" color="error" gutterBottom>
-        Out of Stock
-      </Typography>
-      {renderAccordion(outOfStock)}
+      {/* Edit Product Dialog */}
+      {editingProduct && viewMode !== "accordion" && (
+        <Dialog
+          open={!!editingProduct}
+          onClose={() => setEditingProduct(null)}
+          maxWidth="md"
+          fullWidth>
+          <DialogTitle>Edit Product: {editingProduct.name}</DialogTitle>
+          <DialogContent>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+                gap: 2,
+                mt: 2,
+              }}>
+              <TextField
+                label="Product Name"
+                value={editingProduct.name}
+                onChange={(e) =>
+                  handleProductEdit(editingProduct, "name", e.target.value)
+                }
+                size="small"
+                required
+              />
+              <Autocomplete
+                freeSolo
+                options={categories}
+                value={editingProduct.category}
+                onChange={(event, newValue) =>
+                  handleProductEdit(editingProduct, "category", newValue || "")
+                }
+                onInputChange={(event, newInputValue) =>
+                  handleProductEdit(editingProduct, "category", newInputValue)
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Category"
+                    size="small"
+                    required
+                  />
+                )}
+              />
+              <Autocomplete
+                freeSolo
+                options={subCategories}
+                value={editingProduct.subCategory || ""}
+                onChange={(event, newValue) =>
+                  handleProductEdit(
+                    editingProduct,
+                    "subCategory",
+                    newValue || ""
+                  )
+                }
+                onInputChange={(event, newInputValue) =>
+                  handleProductEdit(
+                    editingProduct,
+                    "subCategory",
+                    newInputValue
+                  )
+                }
+                renderInput={(params) => (
+                  <TextField {...params} label="Sub Category" size="small" />
+                )}
+              />
+              <TextField
+                select
+                label="Unit Type"
+                value={editingProduct.unitType}
+                onChange={(e) =>
+                  handleProductEdit(editingProduct, "unitType", e.target.value)
+                }
+                size="small"
+                SelectProps={{ native: true }}>
+                {UNIT_TYPES.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </TextField>
+              <TextField
+                label="Price per Unit"
+                type="number"
+                value={editingProduct.pricePerUnit}
+                onChange={(e) =>
+                  handleProductEdit(
+                    editingProduct,
+                    "pricePerUnit",
+                    e.target.value
+                  )
+                }
+                size="small"
+                required
+              />
+              <TextField
+                label="Purchase Price per Unit"
+                type="number"
+                value={editingProduct.purchasePricePerUnit || ""}
+                onChange={(e) =>
+                  handleProductEdit(
+                    editingProduct,
+                    "purchasePricePerUnit",
+                    e.target.value
+                  )
+                }
+                size="small"
+              />
+              <TextField
+                label="Purchase Quantity"
+                type="number"
+                value={editingProduct.purchaseQty || ""}
+                onChange={(e) =>
+                  handleProductEdit(
+                    editingProduct,
+                    "purchaseQty",
+                    e.target.value
+                  )
+                }
+                size="small"
+              />
+              <TextField
+                label="Sold Quantity"
+                type="number"
+                value={editingProduct.soldQty || ""}
+                onChange={(e) =>
+                  handleProductEdit(editingProduct, "soldQty", e.target.value)
+                }
+                size="small"
+              />
+              <TextField
+                label="Low Stock Threshold"
+                type="number"
+                value={editingProduct.lowStockThreshold || ""}
+                onChange={(e) =>
+                  handleProductEdit(
+                    editingProduct,
+                    "lowStockThreshold",
+                    e.target.value
+                  )
+                }
+                size="small"
+              />
+              <TextField
+                label="Vendor Name"
+                value={editingProduct.vendorName || ""}
+                onChange={(e) =>
+                  handleProductEdit(
+                    editingProduct,
+                    "vendorName",
+                    e.target.value
+                  )
+                }
+                size="small"
+              />
+              <TextField
+                label="Vendor Contact"
+                value={editingProduct.vendorDetails?.contact || ""}
+                onChange={(e) =>
+                  handleProductEdit(
+                    editingProduct,
+                    "vendorDetails",
+                    e.target.value,
+                    true,
+                    "contact"
+                  )
+                }
+                size="small"
+              />
+              <TextField
+                label="Vendor Description"
+                value={editingProduct.vendorDetails?.vendor_desc || ""}
+                onChange={(e) =>
+                  handleProductEdit(
+                    editingProduct,
+                    "vendorDetails",
+                    e.target.value,
+                    true,
+                    "vendor_desc"
+                  )
+                }
+                size="small"
+                multiline
+                rows={2}
+                sx={{ gridColumn: "span 2" }}
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditingProduct(null)}>Cancel</Button>
+            <Button
+              onClick={() => openDeleteDialog(editingProduct)}
+              color="error"
+              startIcon={<DeleteIcon />}>
+              Delete
+            </Button>
+            <Button
+              onClick={() => handleUpdateProduct(editingProduct)}
+              variant="contained"
+              startIcon={<SaveIcon />}>
+              Save Changes
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <Dialog

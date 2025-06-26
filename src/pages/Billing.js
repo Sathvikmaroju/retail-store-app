@@ -16,11 +16,21 @@ import {
   IconButton,
   Alert,
   Autocomplete,
+  CircularProgress,
 } from "@mui/material";
 import { Delete } from "@mui/icons-material";
 
 import { db, auth } from "../firebase/firebase";
-import { collection, getDocs, doc, writeBatch } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  doc,
+  writeBatch,
+  query,
+  where,
+  limit,
+  orderBy,
+} from "firebase/firestore";
 import BarcodeScanner from "../components/BarcodeScanner";
 
 export default function Billing() {
@@ -36,20 +46,132 @@ export default function Billing() {
   const [scannedBarcode, setScannedBarcode] = useState("");
   const [showScanner, setShowScanner] = useState(false);
 
+  // Customer details
+  const [customerName, setCustomerName] = useState("");
+  const [customerMobile, setCustomerMobile] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+
+  // Enhanced search states
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [recentProducts, setRecentProducts] = useState([]);
+  const [allProductsCache, setAllProductsCache] = useState([]);
+
   useEffect(() => {
-    const fetchProducts = async () => {
-      const snapshot = await getDocs(collection(db, "products"));
-      const list = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setProducts(list);
+    const fetchRecentProducts = async () => {
+      try {
+        // Load only recent/popular products initially (limit 10)
+        const q = query(
+          collection(db, "products"),
+          where("remainingQty", ">", 0),
+          orderBy("remainingQty", "desc"),
+          limit(10)
+        );
+        const snapshot = await getDocs(q);
+        const recentList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setRecentProducts(recentList);
+        setProducts(recentList); // Initially show recent products
+
+        // Also load all products in background for caching (for barcode scanning)
+        const allSnapshot = await getDocs(collection(db, "products"));
+        const allList = allSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setAllProductsCache(allList);
+      } catch (error) {
+        console.error("Error fetching products:", error);
+        setError("Failed to load products.");
+      }
     };
-    fetchProducts();
+    fetchRecentProducts();
   }, []);
+
+  // Search products with debouncing
+  useEffect(() => {
+    const searchProducts = async () => {
+      if (searchTerm.length < 2) {
+        setSearchResults([]);
+        setProducts(recentProducts);
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+
+      try {
+        // Search by name (case-insensitive)
+        const searchTermLower = searchTerm.toLowerCase();
+        const searchTermUpper = searchTerm.toLowerCase() + "\uf8ff";
+
+        const q = query(
+          collection(db, "products"),
+          where("name", ">=", searchTermLower),
+          where("name", "<=", searchTermUpper),
+          where("remainingQty", ">", 0),
+          limit(50)
+        );
+
+        const snapshot = await getDocs(q);
+        let results = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        // Additional client-side filtering for better search results
+        results = results.filter(
+          (product) =>
+            product.name.toLowerCase().includes(searchTermLower) ||
+            product.category?.toLowerCase().includes(searchTermLower)
+        );
+
+        // If Firestore search doesn't work well, fallback to cached search
+        if (results.length === 0 && allProductsCache.length > 0) {
+          results = allProductsCache
+            .filter(
+              (product) =>
+                (product.name.toLowerCase().includes(searchTermLower) ||
+                  product.category?.toLowerCase().includes(searchTermLower)) &&
+                product.remainingQty > 0
+            )
+            .slice(0, 50);
+        }
+
+        setSearchResults(results);
+        setProducts(results);
+      } catch (error) {
+        console.error("Error searching products:", error);
+        // Fallback to cached search
+        const results = allProductsCache
+          .filter(
+            (product) =>
+              (product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                product.category
+                  ?.toLowerCase()
+                  .includes(searchTerm.toLowerCase())) &&
+              product.remainingQty > 0
+          )
+          .slice(0, 50);
+        setProducts(results);
+      }
+
+      setIsSearching(false);
+    };
+
+    const timeoutId = setTimeout(searchProducts, 300); // Debounce search
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, recentProducts, allProductsCache]);
 
   const addToCart = () => {
     setError("");
     setSuccessMsg("");
     if (!selectedProduct) return setError("Please select a product.");
-    const qty = parseInt(quantity);
+
+    const qty = parseFloat(quantity);
     if (!qty || qty <= 0 || qty > selectedProduct.remainingQty) {
       return setError("Invalid quantity.");
     }
@@ -106,10 +228,13 @@ export default function Billing() {
           timestamp,
           userId: auth.currentUser?.uid || "unknown",
           paymentType,
+          customerName: customerName || null,
+          customerMobile: customerMobile || null,
+          customerEmail: customerEmail || null,
         });
 
         const productRef = doc(db, "products", item.id);
-        const product = products.find((p) => p.id === item.id);
+        const product = allProductsCache.find((p) => p.id === item.id);
         const newSold = product.soldQty + item.quantity;
         const newRemaining = product.remainingQty - item.quantity;
         batch.update(productRef, {
@@ -129,6 +254,9 @@ export default function Billing() {
         paymentType,
         userId: auth.currentUser?.uid || "unknown",
         timestamp,
+        customerName: customerName || null,
+        customerMobile: customerMobile || null,
+        customerEmail: customerEmail || null,
       });
 
       await batch.commit();
@@ -136,6 +264,9 @@ export default function Billing() {
       setDiscountType("%");
       setDiscountValue("");
       setPaymentType("Cash");
+      setCustomerName("");
+      setCustomerMobile("");
+      setCustomerEmail("");
       setSuccessMsg("Transaction completed!");
     } catch (err) {
       console.error(err);
@@ -156,19 +287,67 @@ export default function Billing() {
               <Autocomplete
                 fullWidth
                 options={products}
-                getOptionLabel={(option) => option.name}
+                loading={isSearching}
+                getOptionLabel={(option) =>
+                  `${option.name} - ₹${option.pricePerUnit} (${
+                    option.remainingQty || 0
+                  } ${option.unitType} available)`
+                }
                 value={selectedProduct}
                 onChange={(e, newValue) => setSelectedProduct(newValue)}
+                onInputChange={(e, newInputValue) => {
+                  setSearchTerm(newInputValue);
+                }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Select Product"
+                    label="Search Products"
+                    placeholder={
+                      searchTerm.length < 2
+                        ? "Type 2+ characters to search..."
+                        : "Searching..."
+                    }
                     InputProps={{
                       ...params.InputProps,
                       sx: { width: 360, fontSize: "1rem" },
+                      endAdornment: (
+                        <>
+                          {isSearching ? (
+                            <CircularProgress color="inherit" size={20} />
+                          ) : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
                     }}
+                    // helperText={
+                    //   searchTerm.length === 0
+                    //     ? `Showing ${recentProducts.length} recent products`
+                    //     : searchTerm.length < 2
+                    //     ? "Type at least 2 characters to search"
+                    //     : `Found ${products.length} products`
+                    // }
                   />
                 )}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props}>
+                    <Box>
+                      <Typography variant="body1">{option.name}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        ₹{option.pricePerUnit}/{option.unitType} • Stock:{" "}
+                        {option.remainingQty || 0}
+                        {option.category && ` • ${option.category}`}
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+                filterOptions={(options) => options} // Disable built-in filtering since we handle it
+                noOptionsText={
+                  searchTerm.length < 2
+                    ? "Type to search products..."
+                    : isSearching
+                    ? "Searching..."
+                    : "No products found"
+                }
               />
             </Grid>
 
@@ -176,12 +355,49 @@ export default function Billing() {
               <TextField
                 label="Quantity"
                 fullWidth
+                type="number"
                 value={quantity}
                 onChange={(e) => {
                   const val = e.target.value;
-                  if (/^\d*$/.test(val)) setQuantity(val);
+                  // Allow decimals for meter and kilogram, integers for others
+                  if (
+                    selectedProduct &&
+                    (selectedProduct.unitType === "meter" ||
+                      selectedProduct.unitType === "kilogram")
+                  ) {
+                    if (/^\d*\.?\d*$/.test(val)) setQuantity(val);
+                  } else {
+                    if (/^\d*$/.test(val)) setQuantity(val);
+                  }
                 }}
-                inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
+                inputProps={{
+                  inputMode:
+                    selectedProduct &&
+                    (selectedProduct.unitType === "meter" ||
+                      selectedProduct.unitType === "kilogram")
+                      ? "decimal"
+                      : "numeric",
+                  pattern:
+                    selectedProduct &&
+                    (selectedProduct.unitType === "meter" ||
+                      selectedProduct.unitType === "kilogram")
+                      ? "[0-9.]*"
+                      : "[0-9]*",
+                  min: 0,
+                  step:
+                    selectedProduct &&
+                    (selectedProduct.unitType === "meter" ||
+                      selectedProduct.unitType === "kilogram")
+                      ? "0.1"
+                      : "1",
+                }}
+                // helperText={
+                //   selectedProduct &&
+                //   (selectedProduct.unitType === "meter" ||
+                //     selectedProduct.unitType === "kilogram")
+                //     ? "Decimal values allowed"
+                //     : "Whole numbers only"
+                // }
               />
             </Grid>
 
@@ -211,7 +427,7 @@ export default function Billing() {
               <BarcodeScanner
                 onScanSuccess={(code) => {
                   setScannedBarcode(code);
-                  const match = products.find(
+                  const match = allProductsCache.find(
                     (p) =>
                       p.barcode &&
                       p.barcode.toLowerCase() === code.toLowerCase()
@@ -261,7 +477,11 @@ export default function Billing() {
               {cart.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell>
+                    {item.unitType === "meter" || item.unitType === "kilogram"
+                      ? item.quantity.toFixed(2)
+                      : item.quantity}
+                  </TableCell>
                   <TableCell>{item.unitType || "-"}</TableCell>
                   <TableCell>₹{item.pricePerUnit}</TableCell>
                   <TableCell>₹{item.total.toFixed(2)}</TableCell>
@@ -284,6 +504,41 @@ export default function Billing() {
               )}
             </TableBody>
           </Table>
+
+          {/* Customer Details Section */}
+          <Box sx={{ mt: 3, mb: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Customer Details
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Customer Name"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Mobile Number"
+                  value={customerMobile}
+                  onChange={(e) => setCustomerMobile(e.target.value)}
+                  inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Email Address"
+                  type="email"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                />
+              </Grid>
+            </Grid>
+          </Box>
 
           {cart.length > 0 && (
             <>
