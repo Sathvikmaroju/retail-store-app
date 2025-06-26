@@ -24,6 +24,7 @@ import {
   Store,
   Inventory,
   Group,
+  Receipt,
 } from "@mui/icons-material";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { auth } from "../firebase/firebase";
@@ -44,11 +45,22 @@ const navItems = [
     path: "/inventory",
     roles: ["admin"],
   },
-  { label: "Users", icon: <Group />, path: "/users", roles: ["admin"] },
+  {
+    label: "Users",
+    icon: <Group />,
+    path: "/users",
+    roles: ["admin"],
+  },
   {
     label: "Billing",
     icon: <Store />,
     path: "/billing",
+    roles: ["admin", "staff"],
+  },
+  {
+    label: "Sales",
+    icon: <Receipt />,
+    path: "/sales",
     roles: ["admin", "staff"],
   },
 ];

@@ -10,6 +10,7 @@ import Register from "./components/Register";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Billing from "./pages/Billing";
+import Sales from "./pages/Sales";
 import Users from "./pages/Users";
 import Profile from "./pages/Profile";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -17,9 +18,13 @@ import RoleBasedRoute from "./components/RoleBasedRoute";
 import { auth, db } from "./firebase/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import AppLayout from "./components/AppLayout";
+import useIdleLogout from "./hooks/useIdleLogout";
 
 function App() {
   const [user, setUser] = useState(null);
+
+  // Initialize idle logout hook (15 minutes timeout)
+  useIdleLogout(15);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
@@ -54,6 +59,10 @@ function App() {
             <Route
               element={<RoleBasedRoute allowedRoles={["admin", "staff"]} />}>
               <Route path="/billing" element={<Billing />} />
+              <Route
+                path="/sales"
+                element={<Sales userRole={user?.role} currentUser={user} />}
+              />
               <Route path="/profile" element={<Profile />} />
             </Route>
             <Route path="/" element={<Navigate to="/billing" />} />
