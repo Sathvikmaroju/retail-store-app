@@ -17,6 +17,7 @@ import {
   Alert,
   Autocomplete,
   CircularProgress,
+  Divider,
 } from "@mui/material";
 import { Delete } from "@mui/icons-material";
 
@@ -539,6 +540,8 @@ export default function Billing() {
               </Grid>
             </Grid>
           </Box>
+
+          <Divider sx={{ my: 2.5 }} />
 
           {cart.length > 0 && (
             <>
