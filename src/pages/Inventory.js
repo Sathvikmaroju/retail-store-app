@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 import {
-  Typography, TextField, Button, Box, Accordion,
+  Typography, TextField, Button, Box, Accordion, Grid, Paper,
   AccordionSummary, AccordionDetails, Chip, Divider, Stack,
   IconButton, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
   Autocomplete
@@ -34,7 +34,7 @@ const INITIAL_PRODUCT_STATE = {
   vendorName: '',
   vendorDetails: { contact: '', vendor_desc: '' },
   purchaseQty: '',
-  soldQty: '',
+  soldQty: '0',
   lowStockThreshold: '5',
 };
 
@@ -358,18 +358,6 @@ const handleAddProduct = async (e) => {
                   size="small"
                 />
                 <TextField
-                  label="Vendor Name"
-                  value={currentProduct.vendorName || ''}
-                  onChange={(e) => handleProductEdit(currentProduct, 'vendorName', e.target.value)}
-                  size="small"
-                />
-                <TextField
-                  label="Vendor Contact"
-                  value={currentProduct.vendorDetails?.contact || ''}
-                  onChange={(e) => handleProductEdit(currentProduct, 'vendorDetails', e.target.value, true, 'contact')}
-                  size="small"
-                />
-                <TextField
                   label="Purchase Quantity"
                   type="number"
                   value={currentProduct.purchaseQty || ''}
@@ -388,6 +376,18 @@ const handleAddProduct = async (e) => {
                   type="number"
                   value={currentProduct.lowStockThreshold || ''}
                   onChange={(e) => handleProductEdit(currentProduct, 'lowStockThreshold', e.target.value)}
+                  size="small"
+                />
+                <TextField
+                  label="Vendor Name"
+                  value={currentProduct.vendorName || ''}
+                  onChange={(e) => handleProductEdit(currentProduct, 'vendorName', e.target.value)}
+                  size="small"
+                />
+                <TextField
+                  label="Vendor Contact"
+                  value={currentProduct.vendorDetails?.contact || ''}
+                  onChange={(e) => handleProductEdit(currentProduct, 'vendorDetails', e.target.value, true, 'contact')}
                   size="small"
                 />
                 <TextField
@@ -440,14 +440,14 @@ const handleAddProduct = async (e) => {
                 {currentProduct.purchasePricePerUnit && (
                   <Typography><strong>Purchase Price per Unit:</strong> ₹{currentProduct.purchasePricePerUnit}</Typography>
                 )}
-                <Typography><strong>Vendor:</strong> {currentProduct.vendorName || 'N/A'}</Typography>
-                {currentProduct.vendorDetails?.contact && (
-                  <Typography><strong>Vendor Contact:</strong> {currentProduct.vendorDetails.contact}</Typography>
-                )}
                 <Typography><strong>Purchase Qty:</strong> {currentProduct.purchaseQty || 0}</Typography>
                 <Typography><strong>Sold Qty:</strong> {currentProduct.soldQty || 0}</Typography>
                 <Typography><strong>Remaining Qty:</strong> {currentProduct.remainingQty || 0}</Typography>
                 <Typography><strong>Low Stock Threshold:</strong> {currentProduct.lowStockThreshold || 10}</Typography>
+                <Typography><strong>Vendor:</strong> {currentProduct.vendorName || 'N/A'}</Typography>
+                {currentProduct.vendorDetails?.contact && (
+                  <Typography><strong>Vendor Contact:</strong> {currentProduct.vendorDetails.contact}</Typography>
+                )}
                 {currentProduct.vendorDetails?.vendor_desc && (
                   <Typography><strong>Vendor Description:</strong> {currentProduct.vendorDetails.vendor_desc}</Typography>
                 )}
@@ -475,6 +475,27 @@ const handleAddProduct = async (e) => {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>Inventory</Typography>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={4}>
+          <Paper sx={{ p: 2, textAlign: 'center' }}>
+            <Typography variant="subtitle2">Total Items</Typography>
+            <Typography variant="h6">{products.length}</Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Paper sx={{ p: 2, textAlign: 'center' }}>
+            <Typography variant="subtitle2">Low Stock</Typography>
+            <Typography variant="h6" color="warning.main">{groupedProducts.lowStock.length}</Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Paper sx={{ p: 2, textAlign: 'center' }}>
+            <Typography variant="subtitle2">Out of Stock</Typography>
+            <Typography variant="h6" color="error.main">{groupedProducts.outOfStock.length}</Typography>
+          </Paper>
+        </Grid>
+      </Grid>
 
       {/* Search Bar and Add Button */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
@@ -635,24 +656,6 @@ const handleAddProduct = async (e) => {
               }}
             />
             
-            {/* Vendor Name */}
-            <TextField
-              label="Vendor Name"
-              value={newProduct.vendorName}
-              onChange={(e) => handleInputChange('vendorName', e.target.value)}
-              size="small"
-              fullWidth
-            />
-            
-            {/* Vendor Contact */}
-            <TextField
-              label="Vendor Contact"
-              value={newProduct.vendorDetails.contact}
-              onChange={(e) => handleInputChange('vendorDetails', e.target.value, true, 'contact')}
-              size="small"
-              fullWidth
-            />
-            
             {/* Purchase Quantity */}
             <TextField
               label="Purchase Quantity"
@@ -685,6 +688,24 @@ const handleAddProduct = async (e) => {
               fullWidth
               inputProps={{ min: 0 }}
               helperText="Alert when stock falls below this number"
+            />
+            
+            {/* Vendor Name */}
+            <TextField
+              label="Vendor Name"
+              value={newProduct.vendorName}
+              onChange={(e) => handleInputChange('vendorName', e.target.value)}
+              size="small"
+              fullWidth
+            />
+            
+            {/* Vendor Contact */}
+            <TextField
+              label="Vendor Contact"
+              value={newProduct.vendorDetails.contact}
+              onChange={(e) => handleInputChange('vendorDetails', e.target.value, true, 'contact')}
+              size="small"
+              fullWidth
             />
             
             {/* Vendor Description - Full Width */}
