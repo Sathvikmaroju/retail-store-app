@@ -4,9 +4,11 @@ import App from "./App";
 import reportWebVitals from "./reportWebVitals";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
+import ErrorBoundary from "./components/ErrorBoundary";
+import errorLogger from "./services/errorLogger";
 
-// 🎨 Optional: remove if not using custom index.css styles
-// import './index.css';
+// Initialize error logging
+errorLogger.init();
 
 // ✅ Minimalist, elegant theme configuration
 const theme = createTheme({
@@ -37,16 +39,53 @@ const theme = createTheme({
 });
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
+
+// Global error handler for the entire app
+const handleGlobalError = (error, errorInfo, errorId) => {
+  console.error("Global error handler:", { error, errorInfo, errorId });
+
+  // Log to error service
+  errorLogger.logError({
+    type: "react_error_boundary",
+    message: error.message,
+    stack: error.stack,
+    componentStack: errorInfo?.componentStack,
+    errorId,
+    location: "global_app_level",
+  });
+};
+
 root.render(
   <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <App />
-    </ThemeProvider>
+    <ErrorBoundary
+      title="Application Startup Error"
+      message="The application failed to start properly. Please refresh the page or try again later."
+      onError={handleGlobalError}
+      fallbackPath="/login">
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <ErrorBoundary
+          title="Theme or Material-UI Error"
+          message="There was an error with the application's styling system."
+          onError={handleGlobalError}
+          componentName="ThemeProvider">
+          <App />
+        </ErrorBoundary>
+      </ThemeProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );
 
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();
+// Performance monitoring
+reportWebVitals((metric) => {
+  // Log performance metrics
+  errorLogger.logPerformance(metric.name, metric.value, {
+    id: metric.id,
+    rating: metric.rating,
+  });
+
+  // Console log in development
+  if (process.env.NODE_ENV === "development") {
+    console.log("Performance metric:", metric);
+  }
+});
