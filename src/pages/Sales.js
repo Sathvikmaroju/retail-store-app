@@ -1,3 +1,4 @@
+// src/pages/Sales.js
 import React, { useEffect, useState, useMemo } from "react";
 import {
   Box,
@@ -44,6 +45,7 @@ import { db, auth } from "../firebase/firebase";
 import {
   collection,
   getDocs,
+  getDoc,
   query,
   orderBy,
   where,
@@ -256,6 +258,13 @@ const Sales = ({ userRole, currentUser }) => {
       const returnAmount =
         (itemToDelete.total / itemToDelete.quantity) * returnQuantity;
 
+      console.log("Processing return:", {
+        productId: itemToDelete.productId,
+        productName: itemToDelete.productName,
+        returnQuantity,
+        returnAmount,
+      });
+
       // Create a return/refund record
       await addDoc(collection(db, "returns"), {
         originalTransactionId: itemToDelete.id,
@@ -268,8 +277,9 @@ const Sales = ({ userRole, currentUser }) => {
         reason: deleteReason.trim(),
         processedBy: currentUser?.uid || "unknown",
         processedAt: serverTimestamp(),
-        customerName: itemToDelete.customerName,
-        customerMobile: itemToDelete.customerMobile,
+        customerName: itemToDelete.customerName || null,
+        customerMobile: itemToDelete.customerMobile || null,
+        customerEmail: itemToDelete.customerEmail || null,
       });
 
       if (returnQuantity === itemToDelete.quantity) {
@@ -299,10 +309,17 @@ const Sales = ({ userRole, currentUser }) => {
 
         // Create a separate record for the returned portion
         await addDoc(collection(db, "transactions"), {
-          ...itemToDelete,
-          id: undefined, // Let Firestore generate new ID
+          productId: itemToDelete.productId,
+          productName: itemToDelete.productName,
           quantity: returnQuantity,
+          pricePerUnit: itemToDelete.pricePerUnit,
           total: returnAmount,
+          timestamp: itemToDelete.timestamp,
+          userId: itemToDelete.userId,
+          paymentType: itemToDelete.paymentType,
+          customerName: itemToDelete.customerName || null,
+          customerMobile: itemToDelete.customerMobile || null,
+          customerEmail: itemToDelete.customerEmail || null,
           isReturned: true,
           isPartialReturn: true,
           originalTransactionId: itemToDelete.id,
@@ -314,28 +331,31 @@ const Sales = ({ userRole, currentUser }) => {
 
       // Update product stock (add back the returned quantity)
       try {
-        const productsSnapshot = await getDocs(
-          query(
-            collection(db, "products"),
-            where("__name__", "==", itemToDelete.productId)
-          )
-        );
+        const productRef = doc(db, "products", itemToDelete.productId);
+        const productDoc = await getDoc(productRef);
 
-        if (!productsSnapshot.empty) {
-          const productDoc = productsSnapshot.docs[0];
+        if (productDoc.exists()) {
           const productData = productDoc.data();
           const currentRemaining = productData.remainingQty || 0;
           const currentSold = productData.soldQty || 0;
 
-          await updateDoc(doc(db, "products", itemToDelete.productId), {
+          await updateDoc(productRef, {
             remainingQty: currentRemaining + returnQuantity,
             soldQty: Math.max(0, currentSold - returnQuantity),
             updatedAt: serverTimestamp(),
           });
+
+          console.log(
+            `Updated product ${itemToDelete.productName}: +${returnQuantity} to inventory`
+          );
+        } else {
+          console.warn(
+            `Product ${itemToDelete.productId} not found for inventory update`
+          );
         }
       } catch (inventoryError) {
         console.error("Error updating inventory:", inventoryError);
-        // Continue with return process even if inventory update fails
+        // Don't throw error, just log it - return process should continue
       }
 
       setDeleteDialogOpen(false);
@@ -345,7 +365,7 @@ const Sales = ({ userRole, currentUser }) => {
       setError("");
     } catch (err) {
       console.error("Error processing return:", err);
-      setError("Failed to process return");
+      setError(`Failed to process return: ${err.message}`);
     }
   };
 
@@ -572,6 +592,30 @@ const Sales = ({ userRole, currentUser }) => {
                   </Box>
 
                   <Stack direction="row" spacing={1} alignItems="center">
+                    {/* Return Status Indicators */}
+                    {session.items.some((item) => item.isReturned) && (
+                      <Chip
+                        icon={
+                          <Typography sx={{ fontSize: "14px" }}>↩️</Typography>
+                        }
+                        label="Has Returns"
+                        size="small"
+                        color="error"
+                        variant="outlined"
+                      />
+                    )}
+                    {session.items.some((item) => item.hasPartialReturn) && (
+                      <Chip
+                        icon={
+                          <Typography sx={{ fontSize: "14px" }}>⚠️</Typography>
+                        }
+                        label="Partial Returns"
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                      />
+                    )}
+
                     <Chip
                       label={session.paymentType}
                       size="small"
@@ -588,6 +632,24 @@ const Sales = ({ userRole, currentUser }) => {
                     <Typography variant="body2" color="text.secondary">
                       {session.items.filter((item) => !item.isReturned).length}{" "}
                       items
+                      {session.items.some(
+                        (item) => item.isReturned || item.hasPartialReturn
+                      ) && (
+                        <Typography
+                          component="span"
+                          sx={{
+                            fontSize: "12px",
+                            color: "error.main",
+                            ml: 0.5,
+                          }}>
+                          (
+                          {
+                            session.items.filter((item) => item.isReturned)
+                              .length
+                          }{" "}
+                          returned)
+                        </Typography>
+                      )}
                     </Typography>
                   </Stack>
                 </Box>
