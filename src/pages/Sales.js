@@ -45,6 +45,7 @@ import { db, auth } from "../firebase/firebase";
 import {
   collection,
   getDocs,
+  getDoc,
   query,
   orderBy,
   where,
@@ -63,6 +64,7 @@ const Sales = ({ userRole, currentUser }) => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [returnQuantity, setReturnQuantity] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
@@ -243,68 +245,134 @@ const Sales = ({ userRole, currentUser }) => {
       return;
     }
 
+    if (
+      !returnQuantity ||
+      returnQuantity <= 0 ||
+      returnQuantity > itemToDelete.quantity
+    ) {
+      setError("Invalid return quantity");
+      return;
+    }
+
     try {
+      const returnAmount =
+        (itemToDelete.total / itemToDelete.quantity) * returnQuantity;
+
+      console.log("Processing return:", {
+        productId: itemToDelete.productId,
+        productName: itemToDelete.productName,
+        returnQuantity,
+        returnAmount,
+      });
+
       // Create a return/refund record
       await addDoc(collection(db, "returns"), {
         originalTransactionId: itemToDelete.id,
         productId: itemToDelete.productId,
         productName: itemToDelete.productName,
-        quantity: itemToDelete.quantity,
-        amount: itemToDelete.total,
+        originalQuantity: itemToDelete.quantity,
+        returnQuantity: returnQuantity,
+        unitPrice: itemToDelete.pricePerUnit,
+        returnAmount: returnAmount,
         reason: deleteReason.trim(),
         processedBy: currentUser?.uid || "unknown",
         processedAt: serverTimestamp(),
-        customerName: itemToDelete.customerName,
-        customerMobile: itemToDelete.customerMobile,
+        customerName: itemToDelete.customerName || null,
+        customerMobile: itemToDelete.customerMobile || null,
+        customerEmail: itemToDelete.customerEmail || null,
       });
 
-      // Update the transaction to mark it as returned
-      const transactionRef = doc(db, "transactions", itemToDelete.id);
-      await updateDoc(transactionRef, {
-        isReturned: true,
-        returnReason: deleteReason.trim(),
-        returnedAt: serverTimestamp(),
-        returnedBy: currentUser?.uid || "unknown",
-      });
+      if (returnQuantity === itemToDelete.quantity) {
+        // Full return - mark transaction as returned
+        const transactionRef = doc(db, "transactions", itemToDelete.id);
+        await updateDoc(transactionRef, {
+          isReturned: true,
+          returnReason: deleteReason.trim(),
+          returnedAt: serverTimestamp(),
+          returnedBy: currentUser?.uid || "unknown",
+          returnQuantity: returnQuantity,
+        });
+      } else {
+        // Partial return - create new transaction record for the partial return
+        // and update the original transaction
+        const transactionRef = doc(db, "transactions", itemToDelete.id);
+        const newQuantity = itemToDelete.quantity - returnQuantity;
+        const newTotal = itemToDelete.pricePerUnit * newQuantity;
+
+        await updateDoc(transactionRef, {
+          quantity: newQuantity,
+          total: newTotal,
+          hasPartialReturn: true,
+          lastPartialReturnAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+
+        // Create a separate record for the returned portion
+        await addDoc(collection(db, "transactions"), {
+          productId: itemToDelete.productId,
+          productName: itemToDelete.productName,
+          quantity: returnQuantity,
+          pricePerUnit: itemToDelete.pricePerUnit,
+          total: returnAmount,
+          timestamp: itemToDelete.timestamp,
+          userId: itemToDelete.userId,
+          paymentType: itemToDelete.paymentType,
+          customerName: itemToDelete.customerName || null,
+          customerMobile: itemToDelete.customerMobile || null,
+          customerEmail: itemToDelete.customerEmail || null,
+          isReturned: true,
+          isPartialReturn: true,
+          originalTransactionId: itemToDelete.id,
+          returnReason: deleteReason.trim(),
+          returnedAt: serverTimestamp(),
+          returnedBy: currentUser?.uid || "unknown",
+        });
+      }
 
       // Update product stock (add back the returned quantity)
       try {
-        const productsSnapshot = await getDocs(
-          query(
-            collection(db, "products"),
-            where("__name__", "==", itemToDelete.productId)
-          )
-        );
+        const productRef = doc(db, "products", itemToDelete.productId);
+        const productDoc = await getDoc(productRef);
 
-        if (!productsSnapshot.empty) {
-          const productDoc = productsSnapshot.docs[0];
+        if (productDoc.exists()) {
           const productData = productDoc.data();
           const currentRemaining = productData.remainingQty || 0;
           const currentSold = productData.soldQty || 0;
 
-          await updateDoc(doc(db, "products", itemToDelete.productId), {
-            remainingQty: currentRemaining + itemToDelete.quantity,
-            soldQty: Math.max(0, currentSold - itemToDelete.quantity),
+          await updateDoc(productRef, {
+            remainingQty: currentRemaining + returnQuantity,
+            soldQty: Math.max(0, currentSold - returnQuantity),
             updatedAt: serverTimestamp(),
           });
+
+          console.log(
+            `Updated product ${itemToDelete.productName}: +${returnQuantity} to inventory`
+          );
+        } else {
+          console.warn(
+            `Product ${itemToDelete.productId} not found for inventory update`
+          );
         }
       } catch (inventoryError) {
         console.error("Error updating inventory:", inventoryError);
-        // Continue with return process even if inventory update fails
+        // Don't throw error, just log it - return process should continue
       }
 
       setDeleteDialogOpen(false);
       setItemToDelete(null);
       setDeleteReason("");
+      setReturnQuantity(1);
       setError("");
     } catch (err) {
       console.error("Error processing return:", err);
-      setError("Failed to process return");
+      setError(`Failed to process return: ${err.message}`);
     }
   };
 
   const openDeleteDialog = (item) => {
     setItemToDelete(item);
+    setReturnQuantity(1); // Default to 1 item
+    setDeleteReason("");
     setDeleteDialogOpen(true);
   };
 
@@ -524,6 +592,30 @@ const Sales = ({ userRole, currentUser }) => {
                   </Box>
 
                   <Stack direction="row" spacing={1} alignItems="center">
+                    {/* Return Status Indicators */}
+                    {session.items.some((item) => item.isReturned) && (
+                      <Chip
+                        icon={
+                          <Typography sx={{ fontSize: "14px" }}>↩️</Typography>
+                        }
+                        label="Has Returns"
+                        size="small"
+                        color="error"
+                        variant="outlined"
+                      />
+                    )}
+                    {session.items.some((item) => item.hasPartialReturn) && (
+                      <Chip
+                        icon={
+                          <Typography sx={{ fontSize: "14px" }}>⚠️</Typography>
+                        }
+                        label="Partial Returns"
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                      />
+                    )}
+
                     <Chip
                       label={session.paymentType}
                       size="small"
@@ -540,6 +632,24 @@ const Sales = ({ userRole, currentUser }) => {
                     <Typography variant="body2" color="text.secondary">
                       {session.items.filter((item) => !item.isReturned).length}{" "}
                       items
+                      {session.items.some(
+                        (item) => item.isReturned || item.hasPartialReturn
+                      ) && (
+                        <Typography
+                          component="span"
+                          sx={{
+                            fontSize: "12px",
+                            color: "error.main",
+                            ml: 0.5,
+                          }}>
+                          (
+                          {
+                            session.items.filter((item) => item.isReturned)
+                              .length
+                          }{" "}
+                          returned)
+                        </Typography>
+                      )}
                     </Typography>
                   </Stack>
                 </Box>
@@ -584,9 +694,21 @@ const Sales = ({ userRole, currentUser }) => {
                             {item.isReturned ? (
                               <Tooltip title={`Returned: ${item.returnReason}`}>
                                 <Chip
-                                  label="Returned"
+                                  label={
+                                    item.isPartialReturn
+                                      ? "Partial Return"
+                                      : "Returned"
+                                  }
                                   size="small"
                                   color="error"
+                                />
+                              </Tooltip>
+                            ) : item.hasPartialReturn ? (
+                              <Tooltip title="Some items were returned from this transaction">
+                                <Chip
+                                  label="Partial Return"
+                                  size="small"
+                                  color="warning"
                                 />
                               </Tooltip>
                             ) : (
@@ -655,10 +777,57 @@ const Sales = ({ userRole, currentUser }) => {
             Product: <strong>{itemToDelete?.productName}</strong>
           </Typography>
           <Typography gutterBottom>
-            Quantity: <strong>{itemToDelete?.quantity}</strong>
+            Original Quantity: <strong>{itemToDelete?.quantity}</strong>
           </Typography>
           <Typography gutterBottom>
-            Amount: <strong>₹{itemToDelete?.total?.toFixed(2)}</strong>
+            Unit Price: <strong>₹{itemToDelete?.pricePerUnit}</strong>
+          </Typography>
+          <Typography gutterBottom sx={{ mb: 2 }}>
+            Total Amount: <strong>₹{itemToDelete?.total?.toFixed(2)}</strong>
+          </Typography>
+
+          {/* Return Quantity Input */}
+          <TextField
+            margin="dense"
+            label="Return Quantity *"
+            type="number"
+            fullWidth
+            value={returnQuantity}
+            onChange={(e) => {
+              const value = parseInt(e.target.value) || 1;
+              setReturnQuantity(
+                Math.min(Math.max(1, value), itemToDelete?.quantity || 1)
+              );
+            }}
+            inputProps={{
+              min: 1,
+              max: itemToDelete?.quantity || 1,
+              step:
+                itemToDelete?.unitType === "meter" ||
+                itemToDelete?.unitType === "kilogram"
+                  ? 0.1
+                  : 1,
+            }}
+            helperText={`Maximum returnable: ${itemToDelete?.quantity || 0}`}
+            sx={{ mb: 2 }}
+          />
+
+          {/* Return Amount Calculation */}
+          <Typography
+            variant="body2"
+            color="primary"
+            gutterBottom
+            sx={{ mb: 2 }}>
+            Return Amount:{" "}
+            <strong>
+              ₹
+              {itemToDelete && returnQuantity
+                ? (
+                    (itemToDelete.total / itemToDelete.quantity) *
+                    returnQuantity
+                  ).toFixed(2)
+                : "0.00"}
+            </strong>
           </Typography>
 
           <TextField
@@ -679,6 +848,8 @@ const Sales = ({ userRole, currentUser }) => {
             color="text.secondary"
             sx={{ mt: 1, display: "block" }}>
             * This action will create a return record and update inventory.
+            {returnQuantity < (itemToDelete?.quantity || 0) &&
+              " A partial return will split this transaction."}
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -687,8 +858,11 @@ const Sales = ({ userRole, currentUser }) => {
             onClick={handleDeleteItem}
             variant="contained"
             color="error"
-            disabled={!deleteReason.trim()}>
-            Process Return
+            disabled={
+              !deleteReason.trim() || !returnQuantity || returnQuantity <= 0
+            }>
+            Process Return ({returnQuantity}{" "}
+            {returnQuantity === 1 ? "item" : "items"})
           </Button>
         </DialogActions>
       </Dialog>

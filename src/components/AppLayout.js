@@ -29,6 +29,7 @@ import {
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { auth } from "../firebase/firebase";
 import { signOut } from "firebase/auth";
+import ErrorBoundary from "./ErrorBoundary";
 
 const drawerWidth = 220;
 
@@ -78,8 +79,14 @@ function AppLayout({ user }) {
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
-    navigate("/login");
+    try {
+      await signOut(auth);
+      navigate("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Even if logout fails, redirect to login
+      navigate("/login");
+    }
   };
 
   const drawer = (
@@ -112,76 +119,93 @@ function AppLayout({ user }) {
       <CssBaseline />
 
       {/* Top App Bar */}
-      <AppBar position="fixed" sx={{ zIndex: theme.zIndex.drawer + 1 }}>
-        <Toolbar sx={{ justifyContent: "space-between" }}>
-          <Box display="flex" alignItems="center">
-            <IconButton
-              color="inherit"
-              edge="start"
-              onClick={handleDrawerToggle}
-              sx={{ mr: 2, display: { sm: "none" } }}>
-              <MenuIcon />
-            </IconButton>
-            <Typography variant="h6" noWrap>
-              Retail Management System
-            </Typography>
-          </Box>
+      <ErrorBoundary
+        level="component"
+        componentName="Navigation Bar"
+        showReportButton={false}>
+        <AppBar position="fixed" sx={{ zIndex: theme.zIndex.drawer + 1 }}>
+          <Toolbar sx={{ justifyContent: "space-between" }}>
+            <Box display="flex" alignItems="center">
+              <IconButton
+                color="inherit"
+                edge="start"
+                onClick={handleDrawerToggle}
+                sx={{ mr: 2, display: { sm: "none" } }}>
+                <MenuIcon />
+              </IconButton>
+              <Typography variant="h6" noWrap>
+                Retail Management System
+              </Typography>
+            </Box>
 
-          {/* Profile Menu */}
-          <IconButton onClick={(e) => setMenuAnchorEl(e.currentTarget)}>
-            <Avatar sx={{ width: 32, height: 32 }}>
-              {user?.email?.[0]?.toUpperCase() || "U"}
-            </Avatar>
-          </IconButton>
-          <Menu
-            anchorEl={menuAnchorEl}
-            open={Boolean(menuAnchorEl)}
-            onClose={() => setMenuAnchorEl(null)}>
-            <MenuItem disabled>{user?.email}</MenuItem>
-            <MenuItem onClick={() => navigate("/profile")}>Profile</MenuItem>
-            <MenuItem onClick={handleLogout}>
-              <Logout fontSize="small" sx={{ mr: 1 }} />
-              Logout
-            </MenuItem>
-          </Menu>
-        </Toolbar>
-      </AppBar>
+            {/* Profile Menu */}
+            <ErrorBoundary
+              level="component"
+              componentName="User Profile Menu"
+              showReportButton={false}>
+              <IconButton onClick={(e) => setMenuAnchorEl(e.currentTarget)}>
+                <Avatar sx={{ width: 32, height: 32 }}>
+                  {user?.email?.[0]?.toUpperCase() || "U"}
+                </Avatar>
+              </IconButton>
+              <Menu
+                anchorEl={menuAnchorEl}
+                open={Boolean(menuAnchorEl)}
+                onClose={() => setMenuAnchorEl(null)}>
+                <MenuItem disabled>{user?.email}</MenuItem>
+                <MenuItem onClick={() => navigate("/profile")}>
+                  Profile
+                </MenuItem>
+                <MenuItem onClick={handleLogout}>
+                  <Logout fontSize="small" sx={{ mr: 1 }} />
+                  Logout
+                </MenuItem>
+              </Menu>
+            </ErrorBoundary>
+          </Toolbar>
+        </AppBar>
+      </ErrorBoundary>
 
       {/* Desktop Sidebar - Collapsed by default */}
-      <Drawer
-        variant="permanent"
-        sx={{
-          width: drawerOpen ? drawerWidth : 60,
-          flexShrink: 0,
-          display: { xs: "none", sm: "block" },
-          [`& .MuiDrawer-paper`]: {
+      <ErrorBoundary
+        level="component"
+        componentName="Navigation Sidebar"
+        showReportButton={false}>
+        <Drawer
+          variant="permanent"
+          sx={{
             width: drawerOpen ? drawerWidth : 60,
-            boxSizing: "border-box",
-            transition: "width 0.3s",
-            overflowX: "hidden",
-          },
-        }}
-        open
-        onMouseEnter={() => setDrawerOpen(true)}
-        onMouseLeave={() => setDrawerOpen(false)}>
-        {drawer}
-      </Drawer>
+            flexShrink: 0,
+            display: { xs: "none", sm: "block" },
+            [`& .MuiDrawer-paper`]: {
+              width: drawerOpen ? drawerWidth : 60,
+              boxSizing: "border-box",
+              transition: "width 0.3s",
+              overflowX: "hidden",
+            },
+          }}
+          open
+          onMouseEnter={() => setDrawerOpen(true)}
+          onMouseLeave={() => setDrawerOpen(false)}>
+          {drawer}
+        </Drawer>
 
-      {/* Mobile Temporary Drawer (left side) */}
-      <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={handleDrawerToggle}
-        ModalProps={{ keepMounted: true }}
-        sx={{
-          display: { xs: "block", sm: "none" },
-          [`& .MuiDrawer-paper`]: {
-            boxSizing: "border-box",
-            width: drawerWidth,
-          },
-        }}>
-        {drawer}
-      </Drawer>
+        {/* Mobile Temporary Drawer (left side) */}
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={handleDrawerToggle}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            display: { xs: "block", sm: "none" },
+            [`& .MuiDrawer-paper`]: {
+              boxSizing: "border-box",
+              width: drawerWidth,
+            },
+          }}>
+          {drawer}
+        </Drawer>
+      </ErrorBoundary>
 
       {/* Main Content with Outlet */}
       <Box
@@ -194,7 +218,15 @@ function AppLayout({ user }) {
           minHeight: "100vh",
           backgroundColor: "#f9fafb",
         }}>
-        <Outlet />
+        {/* Wrap the main content area with error boundary */}
+        <ErrorBoundary
+          title="Page Content Error"
+          message="There was an error loading this page content. Please try navigating to a different page or refreshing."
+          fallbackPath="/billing"
+          userId={user?.uid}
+          componentName="Page Content">
+          <Outlet />
+        </ErrorBoundary>
       </Box>
     </Box>
   );
